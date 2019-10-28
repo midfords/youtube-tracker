@@ -28,12 +28,6 @@ def fetch_playlist_name(playlist_id):
 
     return res["items"][0]["snippet"]["title"]
 
-def map_playlist_item(item):
-    return {
-        "id": item["snippet"]["resourceId"]["videoId"],
-        "title": item["snippet"]["title"]
-    }
-
 def fetch_playlist_page(playlist_id, page_token=None):
     url = f"https://www.googleapis.com/youtube/v3/playlistItems"
     params = {
@@ -44,29 +38,31 @@ def fetch_playlist_page(playlist_id, page_token=None):
         "maxResults": "50"
     }
     res = requests.get(url, params).json()
-    page_token = res["nextPageToken"] if "nextPageToken" in res else None
-    total_results = res["pageInfo"]["totalResults"]
 
-    return (list(map(map_playlist_item, res["items"])), page_token, total_results)
+    items = { i["snippet"]["resourceId"]["videoId"]: i["snippet"]["title"] for i in res["items"] }
+    next_page = res["nextPageToken"] if "nextPageToken" in res else None
+    count = res["pageInfo"]["totalResults"]
+
+    return (items, next_page, count)
 
 def fetch_playlist(playlist_id):
-    (total, next, total_results) = fetch_playlist_page(playlist_id)
+    (fetched, next, count) = fetch_playlist_page(playlist_id)
 
-    if total_results > 50:
-        progress = progressbar.ProgressBar(max_value=total_results)
+    if count > 100:
+        progress = progressbar.ProgressBar(max_value=count)
 
     while next != None:
-        if total_results > 50:
-            progress.update(len(total))
+        if count > 100:
+            progress.update(len(fetched))
 
-        (items, next, total_results) = fetch_playlist_page(playlist_id, next)
-        total.extend(items)
+        (items, next, count) = fetch_playlist_page(playlist_id, next)
+        fetched.update(items)
 
-    if total_results > 50:
-        progress.update(len(total))
+    if count > 100:
+        progress.update(len(fetched))
         progress.finish()
 
-    return total
+    return fetched
 
 def read_playlist_file(playlist_id):
     try:
@@ -126,55 +122,48 @@ def print_info_added(title, id):
 
 for pl in playlists:
     name = fetch_playlist_name(pl)
-    fname = f"{pl}.ipl"
-    fpath = os.path.join(path, fname)
 
     p0 = f"{Style.RESET_ALL}{Fore.RED}▶{Style.RESET_ALL}"
     p1 = f"{Style.RESET_ALL}Fetching playlist {Fore.RED}{name}{Style.RESET_ALL}..."
     p2 = f"{Style.RESET_ALL}{Style.DIM}[{pl}]{Style.RESET_ALL}"
     print(p0, "{:60}".format(p1), p2)
 
+    out = read_playlist_file(pl)
+    old = { i[1]: i for i in out }
+    new = fetch_playlist(pl)
+
+    fname = f"{pl}.ipl"
+    fpath = os.path.join(path, fname)
     if not os.path.exists(fpath):
         print_info_filenotfound(fname)
 
-    old_l = read_playlist_file(pl)
-    old_d = { i[1]: i for i in old_l }
+    dirty = changed = False
 
-    new_l = fetch_playlist(pl)
-    new_d = { i["id"]: i for i in new_l }
+    added = []
+    for id, title in new.items():
+        if id not in old:
+            print_info_added(title, id)
+            added.append(["", id, title])
+            dirty = changed = True
+    out = added + out
 
-    dirty = False
-    none = True
-    upd = old_l.copy()
+    for i, [flag, id, title] in enumerate(out):
+        if id not in new and flag != "!":
+            print_info_missing(title, id)
+            out[i][0] = "!"
+            dirty = changed = True
 
-    p = 0
-    for i in new_l:
-        if i["id"] not in old_d:
-            print_info_added(i["title"], i["id"])
-            upd.insert(p, ["", i["id"], i["title"]])
-            p += 1
-            dirty = True
-            none = False
-
-    for (k, v) in old_d.items():
-        if k not in new_d and v[0] != "!":
-            print_info_missing(v[2], v[1])
-            for i in upd:
-                if i[1] == k:
-                    i[0] = "!"
-            dirty = True
-            none = False
-        if k in new_d and v[2] != new_d[k]["title"]:
-            print_info_rename(v[2], new_d[k]["title"], k)
-            none = False
+    for [_, id, title] in out:
+        if id in new and title != new[id]:
+            print_info_rename(title, new[id], id)
+            changed = True
 
     if dirty:
         if not os.path.exists(fpath):
             print_info_createfile(fname)
         print_info_writingfile(fname)
-        write_playlist_file(upd, pl)
-
-    elif none:
+        write_playlist_file(out, pl)
+    elif not changed:
         print("  (no changes)")
 
     print()
