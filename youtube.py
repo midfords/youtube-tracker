@@ -2,6 +2,7 @@ import os
 import csv
 import json
 import requests
+import progressbar
 import configparser
 from colorama import Fore
 from colorama import Style
@@ -44,15 +45,26 @@ def fetch_playlist_page(playlist_id, page_token=None):
     }
     res = requests.get(url, params).json()
     page_token = res["nextPageToken"] if "nextPageToken" in res else None
+    total_results = res["pageInfo"]["totalResults"]
 
-    return (list(map(map_playlist_item, res["items"])), page_token)
+    return (list(map(map_playlist_item, res["items"])), page_token, total_results)
 
 def fetch_playlist(playlist_id):
-    (total, next) = fetch_playlist_page(playlist_id)
+    (total, next, total_results) = fetch_playlist_page(playlist_id)
+
+    if total_results > 50:
+        progress = progressbar.ProgressBar(max_value=total_results)
 
     while next != None:
-        (items, next) = fetch_playlist_page(playlist_id, next)
+        if total_results > 50:
+            progress.update(len(total))
+
+        (items, next, total_results) = fetch_playlist_page(playlist_id, next)
         total.extend(items)
+
+    if total_results > 50:
+        progress.update(len(total))
+        progress.finish()
 
     return total
 
