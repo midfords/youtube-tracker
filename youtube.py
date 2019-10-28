@@ -87,32 +87,17 @@ def write_playlist_file(rows, playlist_id):
         for row in rows:
             writer.writerow(row)
 
-def print_info_rename(old, new, id):
-    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.BLUE}i{Style.RESET_ALL}"
-    p1 = f"{Style.RESET_ALL}Song was renamed from {Fore.BLUE}{old}{Style.RESET_ALL} to {Fore.BLUE}{new}{Style.RESET_ALL}"
+def print_head_fetching(title, id):
+    p0 = f"{Style.RESET_ALL}{Fore.RED}▶{Style.RESET_ALL}"
+    p1 = "{:60}".format(f"{Style.RESET_ALL}Fetching {Fore.RED}{title}{Style.RESET_ALL} playlist...")
     p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
-    print("  ", p0, p1, p2)
+    print(p0, p1, p2)
 
-def print_info_filenotfound(file):
-    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.YELLOW}!{Style.RESET_ALL}"
-    p1 = f"{Style.RESET_ALL}Could not find file {Fore.YELLOW}{file}{Style.RESET_ALL}"
-    print("  ", p0, p1)
-
-def print_info_createfile(file):
-    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.YELLOW}!{Style.RESET_ALL}"
-    p1 = f"{Style.RESET_ALL}Creating new file {Fore.YELLOW}{file}{Style.RESET_ALL}"
-    print("  ", p0, p1)
-
-def print_info_writingfile(file):
-    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.YELLOW}!{Style.RESET_ALL}"
-    p1 = f"{Style.RESET_ALL}Writing to file {Fore.YELLOW}{file}{Style.RESET_ALL}"
-    print("  ", p0, p1)
-
-def print_info_missing(title, id):
-    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.RED}×{Style.RESET_ALL}"
-    p1 = f"{Style.RESET_ALL}{Fore.RED}{title}{Style.RESET_ALL} is missing from the playlist{Style.RESET_ALL}"
+def print_err_plnotfound(id):
+    p0 = f"{Style.RESET_ALL}{Fore.RED}▶{Style.RESET_ALL}"
+    p1 = "{:60}".format(f"{Style.RESET_ALL}Could not access {Fore.RED}Unknown{Style.RESET_ALL} playlist.")
     p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
-    print("  ", p0, p1, p2)
+    print(p0, p1, p2)
 
 def print_info_added(title, id):
     p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.GREEN}+{Style.RESET_ALL}"
@@ -120,13 +105,43 @@ def print_info_added(title, id):
     p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
     print("  ", p0, p1, p2)
 
-for pl in playlists:
-    name = fetch_playlist_name(pl)
+def print_info_rename(old, new, id):
+    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.BLUE}i{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}Song was renamed from {Fore.BLUE}{old}{Style.RESET_ALL} to {Fore.BLUE}{new}{Style.RESET_ALL}"
+    p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
+    print("  ", p0, p1, p2)
 
-    p0 = f"{Style.RESET_ALL}{Fore.RED}▶{Style.RESET_ALL}"
-    p1 = f"{Style.RESET_ALL}Fetching playlist {Fore.RED}{name}{Style.RESET_ALL}..."
-    p2 = f"{Style.RESET_ALL}{Style.DIM}[{pl}]{Style.RESET_ALL}"
-    print(p0, "{:60}".format(p1), p2)
+def print_info_missing(title, id):
+    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.RED}×{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}{Fore.RED}{title}{Style.RESET_ALL} is missing from the playlist{Style.RESET_ALL}"
+    p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
+    print("  ", p0, p1, p2)
+
+def print_info_nochanges():
+    print("  (no changes)")
+
+def print_warn_filenotfound(file):
+    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.YELLOW}!{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}Could not find file {Fore.YELLOW}{file}{Style.RESET_ALL}"
+    print("  ", p0, p1)
+
+def print_warn_createfile(file):
+    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.YELLOW}!{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}Creating new file {Fore.YELLOW}{file}{Style.RESET_ALL}"
+    print("  ", p0, p1)
+
+def print_warn_writingfile(file):
+    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.YELLOW}!{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}Writing to file {Fore.YELLOW}{file}{Style.RESET_ALL}"
+    print("  ", p0, p1)
+
+for pl in playlists:
+    try:
+        name = fetch_playlist_name(pl)
+        print_head_fetching(name, pl)
+    except:
+        print_err_plnotfound(pl)
+        continue
 
     out = read_playlist_file(pl)
     old = { i[1]: i for i in out }
@@ -135,7 +150,7 @@ for pl in playlists:
     fname = f"{pl}.ipl"
     fpath = os.path.join(path, fname)
     if not os.path.exists(fpath):
-        print_info_filenotfound(fname)
+        print_warn_filenotfound(fname)
 
     dirty = changed = False
 
@@ -160,10 +175,10 @@ for pl in playlists:
 
     if dirty:
         if not os.path.exists(fpath):
-            print_info_createfile(fname)
-        print_info_writingfile(fname)
+            print_warn_createfile(fname)
+        print_warn_writingfile(fname)
         write_playlist_file(out, pl)
     elif not changed:
-        print("  (no changes)")
+        print_info_nochanges()
 
     print()
