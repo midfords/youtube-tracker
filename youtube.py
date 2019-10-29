@@ -1,4 +1,5 @@
 import os
+import sys
 import csv
 import json
 import requests
@@ -22,13 +23,14 @@ def auth():
     scope = ["https://www.googleapis.com/auth/youtube.readonly"]
     flow = oauth2.InstalledAppFlow.from_client_secrets_file(secret_path, scope)
     credentials = flow.run_console()
+    print()
     return credentials.__dict__["token"]
 
-def fetch_playlist_name(playlist_id, token):
-    url = f"https://www.googleapis.com/youtube/v3/playlists"
+def fetch_username(token):
+    url = "https://www.googleapis.com/youtube/v3/channels"
     params = {
         "key": api_key,
-        "id": playlist_id,
+        "mine": "true",
         "part": "snippet",
         "maxResults": "1"
     }
@@ -39,8 +41,26 @@ def fetch_playlist_name(playlist_id, token):
 
     return res["items"][0]["snippet"]["title"]
 
-def fetch_playlist_page(playlist_id, token, page_token=None):
-    url = f"https://www.googleapis.com/youtube/v3/playlistItems"
+def fetch_playlist_name(playlist_id, token=None):
+    url = "https://www.googleapis.com/youtube/v3/playlists"
+    params = {
+        "key": api_key,
+        "id": playlist_id,
+        "part": "snippet",
+        "maxResults": "1"
+    }
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+    if token == None:
+        res = requests.get(url, params=params).json()
+    else:
+        res = requests.get(url, params=params, headers=headers).json()
+
+    return res["items"][0]["snippet"]["title"]
+
+def fetch_playlist_page(playlist_id, token=None, page_token=None):
+    url = "https://www.googleapis.com/youtube/v3/playlistItems"
     params = {
         "key": api_key,
         "pageToken": page_token,
@@ -51,7 +71,10 @@ def fetch_playlist_page(playlist_id, token, page_token=None):
     headers = {
         "Authorization": f"Bearer {token}"
     }
-    res = requests.get(url, params=params, headers=headers).json()
+    if token == None:
+        res = requests.get(url, params=params).json()
+    else:
+        res = requests.get(url, params=params, headers=headers).json()
 
     items = { i["snippet"]["resourceId"]["videoId"]: i["snippet"]["title"] for i in res["items"] }
     next_page = res["nextPageToken"] if "nextPageToken" in res else None
@@ -59,7 +82,7 @@ def fetch_playlist_page(playlist_id, token, page_token=None):
 
     return (items, next_page, count)
 
-def fetch_playlist(playlist_id, token):
+def fetch_playlist(playlist_id, token=None):
     (fetched, next, count) = fetch_playlist_page(playlist_id, token)
 
     if count > 100:
@@ -100,6 +123,11 @@ def write_playlist_file(rows, playlist_id):
         writer.writerow(header)
         for row in rows:
             writer.writerow(row)
+
+def print_head_signin(username):
+    p0 = f"{Style.RESET_ALL}{Fore.RED}👤{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}Signed in as {Fore.MAGENTA}{username}{Style.RESET_ALL}"
+    print(p0, p1)
 
 def print_head_fetching(title, id):
     p0 = f"{Style.RESET_ALL}{Fore.RED}▶{Style.RESET_ALL}"
@@ -149,7 +177,12 @@ def print_warn_writingfile(file):
     p1 = f"{Style.RESET_ALL}Writing to file {Fore.YELLOW}{file}{Style.RESET_ALL}"
     print("  ", p0, p1)
 
-token = auth()
+token = None
+if len(sys.argv) > 1 and sys.argv[1] == "--auth":
+    token = auth()
+    user = fetch_username(token)
+    print_head_signin(user)
+    print()
 
 for pl in playlists:
     try:
