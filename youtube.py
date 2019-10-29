@@ -6,38 +6,52 @@ import progressbar
 import configparser
 from colorama import Fore
 from colorama import Style
+from google_auth_oauthlib import flow as oauth2
 
 config = configparser.ConfigParser()
 module_dir = os.path.dirname(__file__)
 config_path = os.path.join(module_dir, 'config.ini')
 config.read(config_path)
 
-youtube_api_key = config.get('apikey', 'youtube')
+api_key = config.get('keys', 'api')
 path = config.get('params', 'path')
+secret_path = config.get('params', 'secret_path')
 playlists = json.loads(config.get('params', 'playlists'))
 
-def fetch_playlist_name(playlist_id):
+def auth():
+    scope = ["https://www.googleapis.com/auth/youtube.readonly"]
+    flow = oauth2.InstalledAppFlow.from_client_secrets_file(secret_path, scope)
+    credentials = flow.run_console()
+    return credentials.__dict__["token"]
+
+def fetch_playlist_name(playlist_id, token):
     url = f"https://www.googleapis.com/youtube/v3/playlists"
     params = {
-        "key": youtube_api_key,
+        "key": api_key,
         "id": playlist_id,
         "part": "snippet",
         "maxResults": "1"
     }
-    res = requests.get(url, params).json()
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+    res = requests.get(url, params=params, headers=headers).json()
 
     return res["items"][0]["snippet"]["title"]
 
-def fetch_playlist_page(playlist_id, page_token=None):
+def fetch_playlist_page(playlist_id, token, page_token=None):
     url = f"https://www.googleapis.com/youtube/v3/playlistItems"
     params = {
-        "key": youtube_api_key,
+        "key": api_key,
         "pageToken": page_token,
         "playlistId": playlist_id,
         "part": "snippet",
         "maxResults": "50"
     }
-    res = requests.get(url, params).json()
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+    res = requests.get(url, params=params, headers=headers).json()
 
     items = { i["snippet"]["resourceId"]["videoId"]: i["snippet"]["title"] for i in res["items"] }
     next_page = res["nextPageToken"] if "nextPageToken" in res else None
@@ -45,8 +59,8 @@ def fetch_playlist_page(playlist_id, page_token=None):
 
     return (items, next_page, count)
 
-def fetch_playlist(playlist_id):
-    (fetched, next, count) = fetch_playlist_page(playlist_id)
+def fetch_playlist(playlist_id, token):
+    (fetched, next, count) = fetch_playlist_page(playlist_id, token)
 
     if count > 100:
         progress = progressbar.ProgressBar(max_value=count)
@@ -55,7 +69,7 @@ def fetch_playlist(playlist_id):
         if count > 100:
             progress.update(len(fetched))
 
-        (items, next, count) = fetch_playlist_page(playlist_id, next)
+        (items, next, count) = fetch_playlist_page(playlist_id, token, next)
         fetched.update(items)
 
     if count > 100:
@@ -135,9 +149,11 @@ def print_warn_writingfile(file):
     p1 = f"{Style.RESET_ALL}Writing to file {Fore.YELLOW}{file}{Style.RESET_ALL}"
     print("  ", p0, p1)
 
+token = auth()
+
 for pl in playlists:
     try:
-        name = fetch_playlist_name(pl)
+        name = fetch_playlist_name(pl, token)
         print_head_fetching(name, pl)
     except:
         print_err_plnotfound(pl)
@@ -145,7 +161,7 @@ for pl in playlists:
 
     out = read_playlist_file(pl)
     old = { i[1]: i for i in out }
-    new = fetch_playlist(pl)
+    new = fetch_playlist(pl, token)
 
     fname = f"{pl}.ipl"
     fpath = os.path.join(path, fname)
