@@ -5,4 +5,5 @@ __pycache__/
 diff/
 diff_test/
 client_secret*
+credentials.storage
 config.ini

@@ -1,4 +1,5 @@
 import os
+import io
 import sys
 import csv
 import json
@@ -7,7 +8,9 @@ import progressbar
 import configparser
 from colorama import Fore
 from colorama import Style
-from google_auth_oauthlib import flow as oauth2
+from oauth2client.file import Storage
+from oauth2client.tools import run_flow
+from oauth2client.client import flow_from_clientsecrets
 
 config = configparser.ConfigParser()
 module_dir = os.path.dirname(__file__)
@@ -16,15 +19,27 @@ config.read(config_path)
 
 api_key = config.get('keys', 'api')
 path = config.get('params', 'path')
-secret_path = config.get('params', 'secret_path')
+client_secret = config.get('params', 'secret_path')
 playlists = json.loads(config.get('params', 'playlists'))
 
-def auth():
+def auth(new_auth=False):
     scope = ["https://www.googleapis.com/auth/youtube.readonly"]
-    flow = oauth2.InstalledAppFlow.from_client_secrets_file(secret_path, scope)
-    credentials = flow.run_console()
-    print()
-    return credentials.__dict__["token"]
+    storage_path = os.path.join(module_dir, 'credentials.storage')
+
+    sys.stdout = io.StringIO()
+    sys.stderr = io.StringIO()
+
+    storage = Storage(storage_path)
+    credentials = storage.get()
+
+    if credentials is None or credentials.invalid or new_auth:
+        flow = flow_from_clientsecrets(client_secret, scope=scope)
+        credentials = run_flow(flow, storage)
+
+    sys.stdout = sys.__stdout__
+    sys.stderr = sys.__stderr__
+
+    return credentials.__dict__["access_token"]
 
 def fetch_username(token):
     url = "https://www.googleapis.com/youtube/v3/channels"
@@ -177,12 +192,11 @@ def print_warn_writingfile(file):
     p1 = f"{Style.RESET_ALL}Writing to file {Fore.YELLOW}{file}{Style.RESET_ALL}"
     print("  ", p0, p1)
 
-token = None
-if len(sys.argv) > 1 and sys.argv[1] == "--auth":
-    token = auth()
-    user = fetch_username(token)
-    print_head_signin(user)
-    print()
+new_auth = len(sys.argv) > 1 and sys.argv[1] == '--auth'
+token = auth(new_auth)
+user = fetch_username(token)
+print_head_signin(user)
+print()
 
 for pl in playlists:
     try:
