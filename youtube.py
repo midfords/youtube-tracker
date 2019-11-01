@@ -4,6 +4,7 @@ import sys
 import csv
 import json
 import requests
+import datetime
 import progressbar
 import configparser
 from colorama import Fore
@@ -32,7 +33,7 @@ def auth(new_auth=False):
     storage = Storage(storage_path)
     credentials = storage.get()
 
-    if credentials is None or credentials.invalid or new_auth:
+    if credentials is None or credentials.invalid or credentials.__dict__["token_expiry"] < datetime.datetime.now() or new_auth:
         flow = flow_from_clientsecrets(client_secret, scope=scope)
         credentials = run_flow(flow, storage)
 
