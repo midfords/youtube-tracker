@@ -3,6 +3,7 @@ import io
 import sys
 import csv
 import json
+import httplib2
 import requests
 import datetime
 import progressbar
@@ -32,6 +33,7 @@ def auth(new_auth=False):
 
     storage = Storage(storage_path)
     credentials = storage.get()
+    credentials.refresh(httplib2.Http())
 
     if credentials is None or credentials.invalid or credentials.__dict__["token_expiry"] < datetime.datetime.now() or new_auth:
         flow = flow_from_clientsecrets(client_secret, scope=scope)
