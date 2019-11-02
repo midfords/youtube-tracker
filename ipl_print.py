@@ -34,9 +34,10 @@ def print_column_headers():
 
 def print_header(row):
     print()
-    print(f"version = {row[1]}")
-    print(f"id = {row[4]}")
-    print(f"count = {row[3]}")
+    print(f" Version = {row[1]}")
+    print(f" Id = {row[4]}")
+    print(f" Title = {row[5]}")
+    print(f" Count = {row[3]}")
     print()
 
 def print_read_error(id):

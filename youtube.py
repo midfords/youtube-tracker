@@ -257,7 +257,7 @@ def read_playlist_file(playlist_id):
         print_verbose_message(err)
         return []
 
-def write_playlist_file(rows, playlist_id):
+def write_playlist_file(rows, playlist_id, name):
     """Writes in a csv file the playlist information and songs.
 
     If there is no file, the function will create a new file. The
@@ -272,7 +272,7 @@ def write_playlist_file(rows, playlist_id):
         The playlist id, used to find the csv file on disk.
     """
     fpath = os.path.join(path, f"{playlist_id}.ipl")
-    header = ["#IPL", "1.1", "YOUTUBE", len(rows), playlist_id]
+    header = ["#IPL", "1.1", "YOUTUBE", len(rows), playlist_id, name]
 
     print_verbose_message(f"Writing {len(rows)} row(s) to '{playlist_id}.ipl'")
     with open(fpath, 'w+') as file:
@@ -413,7 +413,7 @@ def main():
             if not os.path.exists(fpath):
                 print_warn_createfile(fname)
             print_warn_writingfile(fname)
-            write_playlist_file(master, playlist)
+            write_playlist_file(master, playlist, name)
 
         elif is_empty(renamed):
             print_info_nochanges()
