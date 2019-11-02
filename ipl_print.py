@@ -12,6 +12,7 @@ parser.add_argument('-l', '--list', action='store_true', help='list of available
 args = parser.parse_args()
 playlists = args.playlists
 
+LIST_AVAILABLE_FLAG = args.list
 MISSING_ONLY_FLAG = args.missing_only
 MISSING_FLAG = "!"
 
@@ -31,6 +32,13 @@ def print_column_headers():
     l2 = "---------------------------"
     print(p0, p1, p2)
     print(l0, l1, l2)
+
+def print_header_available(ids):
+    print()
+    print("Available playlists:")
+    for id in ids:
+        print(f"  {id}")
+    print()
 
 def print_header(row):
     print()
@@ -79,6 +87,13 @@ def read_playlist_file(playlist_id):
     return (header, items)
 
 def main():
+    if LIST_AVAILABLE_FLAG:
+        files = [f.split('.')[0] for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) and f.endswith('.ipl')]
+        print_header_available(files)
+
+    if playlists == None:
+        return
+
     for playlist in playlists:
         try:
             (header, rows) = read_playlist_file(playlist)
