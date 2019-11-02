@@ -6,17 +6,33 @@ import json
 import httplib2
 import requests
 import datetime
+import argparse
 import progressbar
 import configparser
 from colorama import Fore
 from colorama import Style
 from oauth2client.file import Storage
+from oauth2client.tools import argparser
 from oauth2client.tools import run_flow
 from oauth2client.client import flow_from_clientsecrets
 
+parser = argparse.ArgumentParser(description='Flags to change the running behavior of the youtube diff script.')
+parser.add_argument('-r', '--reauth', action='store_true', help='force the script to reauthenticate.')
+parser.add_argument('-v', '--verbose', action='store_true', help='output all verbose messages.')
+parser.add_argument('-t', '--test', action='store_true', help='read params from config_test.ini.')
+args = parser.parse_args()
+
+REAUTH_FLAG = args.reauth
+VERBOSE_FLAG = args.verbose
+TEST_FLAG = args.test
+
+MISSING_FLAG = "!"
+PROGRESS_THRESHOLD = 100
+
 config = configparser.ConfigParser()
 module_dir = os.path.dirname(__file__)
-config_path = os.path.join(module_dir, 'config.ini')
+config_file = 'config_test.ini' if TEST_FLAG else 'config.ini'
+config_path = os.path.join(module_dir, config_file)
 config.read(config_path)
 
 api_key = config.get('keys', 'api')
@@ -28,21 +44,37 @@ def auth():
     scope = ["https://www.googleapis.com/auth/youtube.readonly"]
     storage_path = os.path.join(module_dir, 'credentials.storage')
 
-    sys.stdout = io.StringIO()
-    sys.stderr = io.StringIO()
+    if not VERBOSE_FLAG:
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
 
     storage = Storage(storage_path)
     credentials = storage.get()
+    print_verbose_message("Refreshing stored credentials.")
     credentials.refresh(httplib2.Http())
 
-    if credentials is None or credentials.invalid or credentials.__dict__["token_expiry"] < datetime.datetime.now():
+    credentials_empty = credentials is None
+    credentials_expired = \
+        credentials.__dict__["token_expiry"] < datetime.datetime.now() or \
+        credentials.invalid
+
+    print_verbose_message("Could not find credentials from storage.", condition=credentials_empty)
+    print_verbose_message("Could not find credentials from storage.", condition=credentials_expired)
+    print_verbose_message("Forcing reauthentication.", condition=REAUTH_FLAG)
+
+    if credentials_empty or credentials_expired or REAUTH_FLAG:
+        print_verbose_message("Starting new oauth2 authentication flow.")
         flow = flow_from_clientsecrets(client_secret, scope=scope)
-        credentials = run_flow(flow, storage)
+        flags = argparser.parse_args(args=[])
+        credentials = run_flow(flow, storage, flags=flags)
+
+    token = credentials.__dict__["access_token"]
+    print_verbose_message(f"Using access token '{token}'")
 
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
 
-    return credentials.__dict__["access_token"]
+    return token
 
 def fetch_username(token):
     url = "https://www.googleapis.com/youtube/v3/channels"
@@ -101,22 +133,23 @@ def fetch_playlist_page(playlist_id, token=None, page_token=None):
     return (items, next_page, count)
 
 def fetch_playlist(playlist_id, token=None):
-    THRESHOLD = 100
     (fetched, next, count) = fetch_playlist_page(playlist_id, token)
 
-    if count > THRESHOLD:
+    if count > PROGRESS_THRESHOLD:
         progress = progressbar.ProgressBar(max_value=count)
 
     while next != None:
-        if count > THRESHOLD:
+        if count > PROGRESS_THRESHOLD:
             progress.update(len(fetched))
 
         (items, next, count) = fetch_playlist_page(playlist_id, token, next)
         fetched.update(items)
 
-    if count > THRESHOLD:
+    if count > PROGRESS_THRESHOLD:
         progress.update(len(fetched))
         progress.finish()
+
+    print_verbose_message(f"Fetched {len(fetched)} item(s) from playlist {playlist_id}")
 
     return fetched
 
@@ -173,6 +206,14 @@ def print_warn_writingfile(file):
     p1 = f"{Style.RESET_ALL}Writing to file {Fore.YELLOW}{file}{Style.RESET_ALL}"
     print("  ", p0, p1)
 
+def print_verbose_message(msg, condition=True):
+    if not VERBOSE_FLAG or not condition:
+        return
+
+    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.WHITE}»{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}{msg}"
+    print(p0, p1)
+
 def is_empty(list):
     return len(list) == 0
 
@@ -202,8 +243,18 @@ def read_playlist_file(playlist_id):
             next(reader)
             items = [row for row in reader]
 
+        print_verbose_message(f"Read {len(items)} row(s) from '{playlist_id}.ipl'")
+
+        if VERBOSE_FLAG:
+            missing = 0
+            for item in items:
+                if item[0] == MISSING_FLAG:
+                    missing += 1
+            print_verbose_message(f"{missing} item(s) already marked as missing.")
+
         return items
-    except:
+    except Error as err:
+        print_verbose_message(err)
         return []
 
 def write_playlist_file(rows, playlist_id):
@@ -223,6 +274,7 @@ def write_playlist_file(rows, playlist_id):
     fpath = os.path.join(path, f"{playlist_id}.ipl")
     header = ["#IPL", "1.1", "YOUTUBE", len(rows), playlist_id]
 
+    print_verbose_message(f"Writing {len(rows)} row(s) to '{playlist_id}.ipl'")
     with open(fpath, 'w+') as file:
         writer = csv.writer(file)
         writer.writerow(header)
@@ -235,7 +287,7 @@ def find_added_items(master, new_items):
 
     Parameters
     ----------
-    master: list
+    master : list
         list of all items, formatted as [flag, video_id, title]
     new_items : dict
         list of new items, formatted as { video_id : [flag, video_id, title] }
@@ -250,9 +302,12 @@ def find_added_items(master, new_items):
     old_items = { i[1]: i for i in master }
     for id, title in new_items.items():
         if id not in old_items:
+            print_verbose_message(f"Found unrecognized id {id} - {title}")
             added.append((id, title))
             master.insert(index, ["", id, title])
             index += 1
+
+    print_verbose_message("No unrecognized ids found. ", condition=is_empty(added))
 
     return added
 
@@ -262,7 +317,7 @@ def find_missing_items(master, new_items):
 
     Parameters
     ----------
-    master: list
+    master : list
         list of all items, formatted as [flag, video_id, title]
     new_items : dict
         list of new items, formatted as { video_id : [flag, video_id, title] }
@@ -272,12 +327,14 @@ def find_missing_items(master, new_items):
     list
         a list of all the missing songs, formatted as (video_id, title)
     """
-    MISSING_FLAG = "!"
     missing = []
     for i, [flag, id, title] in enumerate(master):
         if id not in new_items and flag != MISSING_FLAG:
+            print_verbose_message(f"Found missing id at position {i}, {master[i]}")
             master[i][0] = MISSING_FLAG
             missing.append((id, title))
+
+    print_verbose_message("No missing ids found. ", condition=is_empty(missing))
 
     return missing
 
@@ -287,7 +344,7 @@ def find_renamed_items(master, new_items):
 
     Parameters
     ----------
-    master: list
+    master : list
         list of all items, formatted as [flag, video_id, title]
     new_items : dict
         list of new items, formatted as { video_id : [flag, video_id, title] }
@@ -300,7 +357,10 @@ def find_renamed_items(master, new_items):
     renamed = []
     for [_, id, title] in master:
         if id in new_items and title != new_items[id]:
+            print_verbose_message(f"Found renamed item {id}, {title} > {new_items[id]}")
             renamed.append((id, title, new_items[id]))
+
+    print_verbose_message("No renamed items found. ", condition=is_empty(renamed))
 
     return renamed
 
