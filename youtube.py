@@ -308,6 +308,7 @@ def find_added_items(master, new_items):
             index += 1
 
     print_verbose_message("No unrecognized ids found. ", condition=is_empty(added))
+    print_verbose_message(f"{len(added)} unrecognized id(s) found", condition=not is_empty(added))
 
     return added
 
@@ -335,6 +336,7 @@ def find_missing_items(master, new_items):
             missing.append((id, title))
 
     print_verbose_message("No missing ids found. ", condition=is_empty(missing))
+    print_verbose_message(f"{len(missing)} missing id(s) found", condition=not is_empty(missing))
 
     return missing
 
@@ -361,6 +363,7 @@ def find_renamed_items(master, new_items):
             renamed.append((id, title, new_items[id]))
 
     print_verbose_message("No renamed items found. ", condition=is_empty(renamed))
+    print_verbose_message(f"{len(renamed)} renamed item(s) found", condition=not is_empty(renamed))
 
     return renamed
 
