@@ -17,8 +17,9 @@ MISSING_ONLY_FLAG = args.missing_only
 MISSING_FLAG = "!"
 
 config = configparser.ConfigParser()
-module_dir = os.path.dirname(__file__)
-config_path = os.path.join(module_dir, 'config.ini')
+src_dir = os.path.dirname(__file__)
+module_dir = os.path.join(src_dir, '..')
+config_path = os.path.join(module_dir, 'config/config.ini')
 config.read(config_path)
 
 path = config.get('params', 'path')

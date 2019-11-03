@@ -30,8 +30,9 @@ MISSING_FLAG = "!"
 PROGRESS_THRESHOLD = 100
 
 config = configparser.ConfigParser()
-module_dir = os.path.dirname(__file__)
-config_file = 'config_test.ini' if TEST_FLAG else 'config.ini'
+src_dir = os.path.dirname(__file__)
+module_dir = os.path.join(src_dir, '..')
+config_file = 'config/config_test.ini' if TEST_FLAG else 'config/config.ini'
 config_path = os.path.join(module_dir, config_file)
 config.read(config_path)
 
@@ -42,7 +43,7 @@ playlists = json.loads(config.get('params', 'playlists'))
 
 def auth():
     scope = ["https://www.googleapis.com/auth/youtube.readonly"]
-    storage_path = os.path.join(module_dir, 'credentials.storage')
+    storage_path = os.path.join(module_dir, 'auth/credentials.storage')
 
     if not VERBOSE_FLAG:
         sys.stdout = io.StringIO()
