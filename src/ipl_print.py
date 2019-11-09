@@ -37,8 +37,8 @@ def print_column_headers():
 def print_header_available(ids):
     print()
     print("Available playlists:")
-    for id in ids:
-        print(f"  {id}")
+    for [_, _, _, count, id, name] in ids:
+        print(f"  {id} - {name} [{count}]")
     print()
 
 def print_header(row):
@@ -89,8 +89,9 @@ def read_playlist_file(playlist_id):
 
 def main():
     if LIST_AVAILABLE_FLAG:
-        files = [f.split('.')[0] for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) and f.endswith('.ipl')]
-        print_header_available(files)
+        file_names = [f.split('.')[0] for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) and f.endswith('.ipl')]
+        file_headers = [read_playlist_file(id)[0] for id in file_names]
+        print_header_available(file_headers)
 
     if playlists == None:
         return
