@@ -18,11 +18,13 @@ from oauth2client.client import flow_from_clientsecrets
 
 parser = argparse.ArgumentParser(description='Flags to change the running behavior of the youtube diff script.')
 parser.add_argument('-r', '--reauth', action='store_true', help='force the script to reauthenticate.')
+parser.add_argument('-s', '--showall', action='store_true', help='include items that are known to be renamed.')
 parser.add_argument('-v', '--verbose', action='store_true', help='output all verbose messages.')
 parser.add_argument('-t', '--test', action='store_true', help='read params from config_test.ini.')
 args = parser.parse_args()
 
 REAUTH_FLAG = args.reauth
+SHOW_ALL_FLAG = args.showall
 VERBOSE_FLAG = args.verbose
 TEST_FLAG = args.test
 
@@ -190,7 +192,7 @@ def print_info_missing(id, title):
     print("  ", p0, p1, p2)
 
 def print_info_nochanges():
-    print("  (no changes)")
+    print("  (no new changes)")
 
 def print_warn_filenotfound(file):
     p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.YELLOW}!{Style.RESET_ALL}"
@@ -217,6 +219,52 @@ def print_verbose_message(msg, condition=True):
 
 def is_empty(list):
     return len(list) == 0
+
+def read_cache_file(playlist_id):
+    """Reads in a file of song ids that are known to be renamed.
+
+    If there is no file, or the file is empty, the function
+    will return an empty set.
+
+    Returns
+    -------
+    map
+        a map of all the known song ids formatted as { id : title }
+    """
+    sname = f".{playlist_id}.cache"
+    spath = os.path.join(path, sname)
+
+    if not os.path.exists(spath):
+        print_verbose_message(f"Could not find {sname} file.'")
+        return {}
+
+    with open(spath, 'r') as file:
+        reader = csv.reader(file)
+        ids = {line[0]: line[1] for line in reader}
+
+    print_verbose_message(f"Read {len(ids)} row(s) from '{sname}'")
+
+    return ids
+
+def write_cache_file(cache, playlist_id):
+    """Writes in a file of song ids that are known to be renamed.
+
+    If there is no file, a file '.{playlist}.cache' will be created in the project
+    root directory.
+
+    Parameters
+    -------
+    map
+        a map of all the known song ids formatted as { id : title }
+    """
+    spath = os.path.join(path, f".{playlist_id}.cache")
+    rows = [[id, title] for id, title in cache.items()]
+
+    print_verbose_message(f"Writing {len(cache)} row(s) to '.{playlist_id}.cache'")
+    with open(spath, 'w+') as file:
+        writer = csv.writer(file)
+        for item in rows:
+            writer.writerow(item)
 
 def read_playlist_file(playlist_id):
     """Reads in a csv file of playlist information.
@@ -350,7 +398,7 @@ def find_renamed_items(master, new_items):
     master : list
         list of all items, formatted as [flag, video_id, title]
     new_items : dict
-        list of new items, formatted as { video_id : [flag, video_id, title] }
+        list of new items, formatted as { video_id : title }
 
     Returns
     -------
@@ -383,6 +431,7 @@ def main():
             continue
 
         master = read_playlist_file(playlist)
+        cache = read_cache_file(playlist)
         new = fetch_playlist(playlist, token)
 
         fname = f"{playlist}.ipl"
@@ -408,7 +457,25 @@ def main():
             id = item[0]
             old_title = item[1]
             new_title = item[2]
-            print_info_rename(id, old_title, new_title)
+            if id not in cache or cache[id] != new_title or SHOW_ALL_FLAG:
+                print_info_rename(id, old_title, new_title)
+
+        cache_flag = False
+        for item in renamed:
+            id = item[0]
+            new_title = item[2]
+            cache_flag = cache_flag \
+                or id not in cache \
+                or cache[id] != new_title
+            cache[id] = new_title
+
+        sname = f".{playlist}.cache"
+        spath = os.path.join(path, sname)
+        if cache_flag:
+            if not os.path.exists(spath):
+                print_warn_filenotfound(sname)
+            print_warn_writingfile(sname)
+            write_cache_file(cache, playlist)
 
         if not is_empty(added) or not is_empty(missing):
             if not os.path.exists(fpath):
@@ -416,7 +483,7 @@ def main():
             print_warn_writingfile(fname)
             write_playlist_file(master, playlist, name)
 
-        elif is_empty(renamed):
+        elif is_empty(renamed) or not cache_flag:
             print_info_nochanges()
 
         print()
