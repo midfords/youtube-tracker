@@ -7,31 +7,35 @@ There are several tests included for this project, you can run them with the fol
 
 ## Usage
 
-`usage: youtube.py [-h] [-r] [-s] [-v] [-t]
+```
+usage: youtube.py [-h] [-r] [-s] [-v] [-t]
 Flags to change the running behavior of the youtube diff script.
 optional arguments:
   -h, --help     show this help message and exit
   -r, --reauth   force the script to reauthenticate.
   -s, --showall  include items that are known to be renamed.
   -v, --verbose  output all verbose messages.
-  -t, --test     read params from config_test.ini.`
+  -t, --test     read params from config_test.ini.
+```
 
 
-`usage: ipl_print.py [-h] [-p PLAYLISTS [PLAYLISTS ...]] [-m] [-l]
+```
+usage: ipl_print.py [-h] [-p PLAYLISTS [PLAYLISTS ...]] [-m] [-l]
 Arguments to specify playlist ids to print.
 optional arguments:
   -h, --help            show this help message and exit
   -p PLAYLISTS [PLAYLISTS ...], --playlists PLAYLISTS [PLAYLISTS ...]
                         list of playlist ids to print.
   -m, --missing_only    list only missing items.
-  -l, --list            list of available playlists.`
+  -l, --list            list of available playlists.
+```
 
 ## Installation and Setup
 
 This script requires access to the YouTube Data API v3, as well as registered Oauth2
 credentials. This is to allow the script access to both the public and private playlist information on YouTube.
 
-This script had dependencies on python3.7 and the following additional modules:
+This script has dependencies on python3.7 and the following additional modules:
 - requests
 - progressbar2
 - colorama
@@ -70,7 +74,8 @@ Create a config.ini file in the same directory as the script. Fill in the necess
 
 Template config.ini file:
 
-`[keys]
+```
+[keys]
 api = # YouTube Data API v3 key
 
 [params]
@@ -79,11 +84,13 @@ playlists = [
   ""
 ] # List of playlist ids, separated by commas
 path = # Path to folder where .ipl files will be stored
-secret_path = # Path to folder where credentials.storage will be stored`
+secret_path = # Path to folder where credentials.storage will be stored
+```
 
 Sample config.ini file:
 
-`[keys]
+```
+[keys]
 api = abcdef12345
 
 [params]
@@ -92,15 +99,19 @@ playlists = [
   "PLUtTDeNt3L-6_C-Lf0YMjTCwqaNQZ6ueQ"
 ]
 path = ~/scripts-midfords/youtube/diff/
-secret_path = ~/scripts-midfords/youtube/auth/`
+secret_path = ~/scripts-midfords/youtube/auth/
+```
 
 Add or remove playlists in this file to change tracked items.
 
 ### Aliases
 
-In your rc file (.bashrc, .zshrc, etc.) add aliases like so:
+In your rc file (.bashrc, .zshrc, etc.) add this alias to run the youtube tracker:
 
 `alias run_youtube='python3 ~/scripts-midfords/youtube/src/youtube.py'`
+
+Add this alias to run the ipl print util:
+
 `alias print_youtube='python3 ~/scripts-midfords/youtube/src/ipl_print.py'`
 
 Now you can run the scripts with `run_youtube` and `print_youtube` commands.
