@@ -66,7 +66,7 @@ These steps explain how to allow the script access to private YouTube playlists.
 
 *Note: You do not need to verify the project to use Google Oauth2. Just ignore the unverified project warning.
 
-![Alt](/screenshots/screenshot-auth.png "Screenshot")
+![Alt](/youtube/screenshots/screenshot-auth.png "Screenshot")
 
 ### Configuration
 
@@ -118,6 +118,6 @@ Now you can run the scripts with `run_youtube` and `print_youtube` commands.
 
 ### Screenshots
 
-![Alt](/screenshots/screenshot-diff.png "Screenshot")
-![Alt](/screenshots/screenshot-print.png "Screenshot")
+![Alt](/youtube/screenshots/screenshot-diff.png "Screenshot")
+![Alt](/youtube/screenshots/screenshot-print.png "Screenshot")
 
