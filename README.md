@@ -3,7 +3,7 @@ This script is used to track YouTube playlists. The script will determine and ou
 
 There are several tests included for this project, you can run them with the following command:
 
-`python3 ~/scripts-midfords/youtube/test/youtube.test.py`
+`python3 ~/youtube-midfords/test/youtube.test.py`
 
 ## Usage
 
@@ -41,9 +41,9 @@ This script has dependencies on python3.7 and the following additional modules:
 - colorama
 - oauth2client
 
-This script is part of a larger repository of miscellaneous scripts. You can clone the whole repository using git:
+You can clone this repository using git:
 
-`git clone https://github.com/midfords/scripts.git scripts-midfords && cd scripts-midfords`
+`git clone https://github.com/midfords/youtube-tracker.git youtube-midfords && cd youtube-midfords`
 
 ### Get an API key
 
@@ -98,8 +98,8 @@ playlists = [
   "PLUtTDeNt3L-43VWr1KYEEj7HcPi_ipBkZ",
   "PLUtTDeNt3L-6_C-Lf0YMjTCwqaNQZ6ueQ"
 ]
-path = ~/scripts-midfords/youtube/diff/
-secret_path = ~/scripts-midfords/youtube/auth/
+path = ~/youtube-midfords/diff/
+secret_path = ~/youtube-midfords/auth/
 ```
 
 Add or remove playlists in this file to change tracked items.
@@ -108,11 +108,11 @@ Add or remove playlists in this file to change tracked items.
 
 In your rc file (.bashrc, .zshrc, etc.) add this alias to run the YouTube tracker:
 
-`alias run_youtube='python3 ~/scripts-midfords/youtube/src/youtube.py'`
+`alias run_youtube='python3 ~/youtube-midfords/src/youtube.py'`
 
 Add this alias to run the ipl print util:
 
-`alias print_youtube='python3 ~/scripts-midfords/youtube/src/ipl_print.py'`
+`alias print_youtube='python3 ~/youtube-midfords/src/ipl_print.py'`
 
 Now you can run the scripts with `run_youtube` and `print_youtube` commands.
 
