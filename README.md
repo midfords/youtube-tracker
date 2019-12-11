@@ -41,7 +41,7 @@ This script has dependencies on python3.7 and the following additional modules:
 - colorama
 - oauth2client
 
-This script is part of a larger repository of miscellaneous scripts. You can clone the whole repository using git
+This script is part of a larger repository of miscellaneous scripts. You can clone the whole repository using git:
 
 `git clone https://github.com/midfords/scripts.git scripts-midfords && cd scripts-midfords`
 
@@ -52,9 +52,9 @@ These steps explain how to obtain your own Google API key.
 1. Go to the Google developer's site.
 2. Setup an account and create a new API key.
 3. Key configuration
-  a. Application restrictions: None
-  b. API restrictions: Restrict key
-  c. Selected APIs: Youtube Data API v3
+  * Application restrictions: None
+  * API restrictions: Restrict key
+  * Selected APIs: Youtube Data API v3
 
 ### Set up an Oauth2 project
 
@@ -66,7 +66,7 @@ These steps explain how to allow the script access to private YouTube playlists.
 
 *Note: You do not need to verify the project to use Google Oauth2. Just ignore the unverified project warning.
 
-![Alt](/youtube/screenshots/screenshot-auth.png "Screenshot")
+![Alt](/screenshots/screenshot-auth.png "Screenshot")
 
 ### Configuration
 
@@ -106,7 +106,7 @@ Add or remove playlists in this file to change tracked items.
 
 ### Aliases
 
-In your rc file (.bashrc, .zshrc, etc.) add this alias to run the youtube tracker:
+In your rc file (.bashrc, .zshrc, etc.) add this alias to run the YouTube tracker:
 
 `alias run_youtube='python3 ~/scripts-midfords/youtube/src/youtube.py'`
 
@@ -118,6 +118,6 @@ Now you can run the scripts with `run_youtube` and `print_youtube` commands.
 
 ### Screenshots
 
-![Alt](/youtube/screenshots/screenshot-diff.png "Screenshot")
-![Alt](/youtube/screenshots/screenshot-print.png "Screenshot")
+![Alt](/screenshots/screenshot-diff.png "Screenshot")
+![Alt](/screenshots/screenshot-print.png "Screenshot")
 
