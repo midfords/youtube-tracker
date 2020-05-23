@@ -302,7 +302,7 @@ def read_playlist_file(playlist_id):
             print_verbose_message(f"{missing} item(s) already marked as missing.")
 
         return items
-    except Error as err:
+    except Exception as err:
         print_verbose_message(err)
         return []
 
