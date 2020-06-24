@@ -179,6 +179,12 @@ def print_info_added(id, title):
     p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
     print("  ", p0, p1, p2)
 
+def print_info_recovered(id, title):
+    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.GREEN}↪{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}{Fore.GREEN}{title}{Style.RESET_ALL} was recovered"
+    p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
+    print("  ", p0, p1, p2)
+
 def print_info_rename(id, old, new):
     p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.BLUE}i{Style.RESET_ALL}"
     p1 = f"{Style.RESET_ALL}Song was renamed from {Fore.BLUE}{old}{Style.RESET_ALL} to {Fore.BLUE}{new}{Style.RESET_ALL}"
@@ -361,6 +367,34 @@ def find_added_items(master, new_items):
 
     return added
 
+def find_recovered_items(master, new_items):
+    """Compares the items from the new_items list and master list,
+    and finds all ids present in new_items that were previously marked as missing.
+
+    Parameters
+    ----------
+    master : list
+        list of all items, formatted as [flag, video_id, title]
+    new_items : dict
+        list of new items, formatted as { video_id : [flag, video_id, title] }
+
+    Returns
+    -------
+    list
+        a list of all the recovered songs, formatted as (video_id, title)
+    """
+    recovered = []
+    for i, [flag, id, title] in enumerate(master):
+        if id in new_items and flag == MISSING_FLAG:
+            print_verbose_message(f"Found recovered id {id} - {title}")
+            recovered.append((id, title))
+            master[i] = ["", id, title]
+
+    print_verbose_message("No recovered ids found. ", condition=is_empty(recovered))
+    print_verbose_message(f"{len(recovered)} recovered id(s) found. ", condition=not is_empty(recovered))
+
+    return recovered
+
 def find_missing_items(master, new_items):
     """Compares the items from the new_items list and master list,
     and finds all the missing items.
@@ -440,6 +474,7 @@ def main():
             print_warn_filenotfound(fname)
 
         added = find_added_items(master, new)
+        recovered = find_recovered_items(master, new)
         missing = find_missing_items(master, new)
         renamed = find_renamed_items(master, new)
 
@@ -447,6 +482,11 @@ def main():
             id = item[0]
             title = item[1]
             print_info_added(id, title)
+
+        for item in recovered:
+            id = item[0]
+            title = item[1]
+            print_info_recovered(id, title)
 
         for item in missing:
             id = item[0]
@@ -477,7 +517,7 @@ def main():
             print_warn_writingfile(sname)
             write_cache_file(cache, playlist)
 
-        if not is_empty(added) or not is_empty(missing):
+        if not is_empty(added) or not is_empty(missing) or not is_empty(recovered):
             if not os.path.exists(fpath):
                 print_warn_createfile(fname)
             print_warn_writingfile(fname)
