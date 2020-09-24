@@ -3,6 +3,7 @@ import unittest
 
 sys.path.append('../src')
 from youtube import find_added_items
+from youtube import find_recovered_items
 from youtube import find_missing_items
 from youtube import find_renamed_items
 
@@ -75,6 +76,19 @@ class TestYoutubeDiff(unittest.TestCase):
         actual = find_added_items(self.old_items, self.new_items)
 
         self.assertEqual(expected, self.old_items)
+
+    #
+    # find_recovered_items
+    #
+
+    def test_recovered_items(self):
+        expected = [
+            ("00000000001", "Item 1")
+        ]
+        self.old_items[1][0] = "!"
+        actual = find_recovered_items(self.old_items, self.new_items)
+
+        self.assertEqual(expected, actual)
 
     #
     # find_missing_items
