@@ -1,7 +1,11 @@
+import os
 import sys
 import unittest
 
-sys.path.append('../src')
+tst_dir = os.path.dirname(__file__)
+src_dir = os.path.join(tst_dir, '../src')
+sys.path.append(src_dir)
+
 from youtube import find_added_items
 from youtube import find_recovered_items
 from youtube import find_missing_items
