@@ -25,7 +25,8 @@ log_name = f"application-{timestamp}.log"
 log_path = os.path.join(module_dir, "logs")
 log_file = os.path.join(log_path, log_name)
 
-os.makedirs(log_path)
+if not os.path.exists(log_path):
+    os.makedirs(log_path)
 
 logging.basicConfig(filename=log_file)
 log = logging.getLogger(__name__)
@@ -232,8 +233,11 @@ def print_warn_writingfile(file):
     p1 = f"{Style.RESET_ALL}Writing to file {Fore.YELLOW}{file}{Style.RESET_ALL}"
     print("  ", p0, p1)
 
-def print_verbose_and_log(msg, condition=True):
-    if condition:
+def print_verbose_and_log(msg, condition=True, error=None):
+    if condition and error:
+        log.error(msg)
+        log.exception(error)
+    elif condition:
         log.info(msg)
 
     if not VERBOSE_FLAG or not condition:
@@ -329,7 +333,7 @@ def read_playlist_file(playlist_id):
 
         return items
     except Exception as err:
-        print_verbose_and_log(err)
+        print_verbose_and_log(f"Error occured while reading playlist file for {playlist_id}.", error=err)
         return []
 
 def write_playlist_file(rows, playlist_id, name):
@@ -480,7 +484,8 @@ def main():
         try:
             name = fetch_playlist_name(playlist, token)
             print_head_fetching(playlist, name)
-        except:
+        except Exception as err:
+            print_verbose_and_log(f"Playlist {playlist} not found.", error=err)
             print_err_plnotfound(playlist)
             continue
 
@@ -553,7 +558,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:
-        log.error(e)
-        log.error("Script exited unexpectedly.")
-        raise e
+    except Exception as err:
+        print_verbose_and_log("Script exited unexpectedly.", error=err)
+        raise err
