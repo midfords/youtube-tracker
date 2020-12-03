@@ -5,6 +5,7 @@ __pycache__/
 
 diff/
 keys/
+logs/
 
 client_secret*
 credentials.storage

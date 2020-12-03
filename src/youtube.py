@@ -1,20 +1,35 @@
-import os
-import io
-import sys
-import csv
-import json
-import httplib2
-import requests
-import datetime
 import argparse
-import progressbar
 import configparser
+import csv
+import datetime
+import httplib2
+import io
+import json
+import logging
+import os
+import progressbar
+import requests
+import sys
 from colorama import Fore
 from colorama import Style
+from oauth2client.client import flow_from_clientsecrets
 from oauth2client.file import Storage
 from oauth2client.tools import argparser
 from oauth2client.tools import run_flow
-from oauth2client.client import flow_from_clientsecrets
+
+src_dir = os.path.dirname(__file__)
+module_dir = os.path.join(src_dir, '..')
+
+timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H%M%S")
+log_name = f"application-{timestamp}.log"
+log_path = os.path.join(module_dir, "logs")
+log_file = os.path.join(log_path, log_name)
+
+os.makedirs(log_path)
+
+logging.basicConfig(filename=log_file)
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 parser = argparse.ArgumentParser(description='Flags to change the running behavior of the youtube diff script.')
 parser.add_argument('-r', '--reauth', action='store_true', help='force the script to reauthenticate.')
@@ -28,15 +43,18 @@ SHOW_ALL_FLAG = args.showall
 VERBOSE_FLAG = args.verbose
 TEST_FLAG = args.test
 
+if TEST_FLAG:
+    log.info("Running in test mode.")
+
 MISSING_FLAG = "!"
 PROGRESS_THRESHOLD = 100
 
 config = configparser.ConfigParser()
-src_dir = os.path.dirname(__file__)
-module_dir = os.path.join(src_dir, '..')
 config_file = 'config/config_test.ini' if TEST_FLAG else 'config/config.ini'
 config_path = os.path.join(module_dir, config_file)
 config.read(config_path)
+
+log.info(f"Reading in config file {config_file}.")
 
 api_key = config.get('keys', 'api')
 path = config.get('params', 'path')
@@ -53,7 +71,7 @@ def auth():
 
     storage = Storage(storage_path)
     credentials = storage.get()
-    print_verbose_message("Refreshing stored credentials.")
+    print_verbose_and_log("Refreshing stored credentials.")
     credentials.refresh(httplib2.Http())
 
     credentials_empty = credentials is None
@@ -61,18 +79,17 @@ def auth():
         credentials.__dict__["token_expiry"] < datetime.datetime.now() or \
         credentials.invalid
 
-    print_verbose_message("Could not find credentials from storage.", condition=credentials_empty)
-    print_verbose_message("Could not find credentials from storage.", condition=credentials_expired)
-    print_verbose_message("Forcing reauthentication.", condition=REAUTH_FLAG)
+    print_verbose_and_log("Could not find credentials from storage.", condition=credentials_empty or credentials_expired)
+    print_verbose_and_log("Forcing reauthentication.", condition=REAUTH_FLAG)
 
     if credentials_empty or credentials_expired or REAUTH_FLAG:
-        print_verbose_message("Starting new oauth2 authentication flow.")
+        print_verbose_and_log("Starting new oauth2 authentication flow.")
         flow = flow_from_clientsecrets(client_secret, scope=scope)
         flags = argparser.parse_args(args=[])
         credentials = run_flow(flow, storage, flags=flags)
 
     token = credentials.__dict__["access_token"]
-    print_verbose_message(f"Using access token '{token}'")
+    print_verbose_and_log(f"Using access token '{token}'")
 
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
@@ -152,7 +169,7 @@ def fetch_playlist(playlist_id, token=None):
         progress.update(len(fetched))
         progress.finish()
 
-    print_verbose_message(f"Fetched {len(fetched)} item(s) from playlist {playlist_id}")
+    print_verbose_and_log(f"Fetched {len(fetched)} item(s) from playlist {playlist_id}")
 
     return fetched
 
@@ -215,7 +232,10 @@ def print_warn_writingfile(file):
     p1 = f"{Style.RESET_ALL}Writing to file {Fore.YELLOW}{file}{Style.RESET_ALL}"
     print("  ", p0, p1)
 
-def print_verbose_message(msg, condition=True):
+def print_verbose_and_log(msg, condition=True):
+    if condition:
+        log.info(msg)
+
     if not VERBOSE_FLAG or not condition:
         return
 
@@ -241,14 +261,14 @@ def read_cache_file(playlist_id):
     spath = os.path.join(path, sname)
 
     if not os.path.exists(spath):
-        print_verbose_message(f"Could not find {sname} file.'")
+        print_verbose_and_log(f"Could not find {sname} file.'")
         return {}
 
     with open(spath, 'r') as file:
         reader = csv.reader(file)
         ids = {line[0]: line[1] for line in reader}
 
-    print_verbose_message(f"Read {len(ids)} row(s) from '{sname}'")
+    print_verbose_and_log(f"Read {len(ids)} row(s) from '{sname}'")
 
     return ids
 
@@ -266,7 +286,7 @@ def write_cache_file(cache, playlist_id):
     spath = os.path.join(path, f".{playlist_id}.cache")
     rows = [[id, title] for id, title in cache.items()]
 
-    print_verbose_message(f"Writing {len(cache)} row(s) to '.{playlist_id}.cache'")
+    print_verbose_and_log(f"Writing {len(cache)} row(s) to '.{playlist_id}.cache'")
     with open(spath, 'w+') as file:
         writer = csv.writer(file)
         for item in rows:
@@ -298,18 +318,18 @@ def read_playlist_file(playlist_id):
             next(reader)
             items = [row for row in reader]
 
-        print_verbose_message(f"Read {len(items)} row(s) from '{playlist_id}.ipl'")
+        print_verbose_and_log(f"Read {len(items)} row(s) from '{playlist_id}.ipl'")
 
         if VERBOSE_FLAG:
             missing = 0
             for item in items:
                 if item[0] == MISSING_FLAG:
                     missing += 1
-            print_verbose_message(f"{missing} item(s) already marked as missing.")
+            print_verbose_and_log(f"{missing} item(s) already marked as missing.")
 
         return items
     except Exception as err:
-        print_verbose_message(err)
+        print_verbose_and_log(err)
         return []
 
 def write_playlist_file(rows, playlist_id, name):
@@ -329,7 +349,7 @@ def write_playlist_file(rows, playlist_id, name):
     fpath = os.path.join(path, f"{playlist_id}.ipl")
     header = ["#IPL", "1.1", "YOUTUBE", len(rows), playlist_id, name]
 
-    print_verbose_message(f"Writing {len(rows)} row(s) to '{playlist_id}.ipl'")
+    print_verbose_and_log(f"Writing {len(rows)} row(s) to '{playlist_id}.ipl'")
     with open(fpath, 'w+') as file:
         writer = csv.writer(file)
         writer.writerow(header)
@@ -357,13 +377,13 @@ def find_added_items(master, new_items):
     old_items = { i[1]: i for i in master }
     for id, title in new_items.items():
         if id not in old_items:
-            print_verbose_message(f"Found unrecognized id {id} - {title}")
+            print_verbose_and_log(f"Found unrecognized id {id} - {title}")
             added.append((id, title))
             master.insert(index, ["", id, title])
             index += 1
 
-    print_verbose_message("No unrecognized ids found. ", condition=is_empty(added))
-    print_verbose_message(f"{len(added)} unrecognized id(s) found. ", condition=not is_empty(added))
+    print_verbose_and_log("No unrecognized ids found. ", condition=is_empty(added))
+    print_verbose_and_log(f"{len(added)} unrecognized id(s) found. ", condition=not is_empty(added))
 
     return added
 
@@ -386,12 +406,12 @@ def find_recovered_items(master, new_items):
     recovered = []
     for i, [flag, id, title] in enumerate(master):
         if id in new_items and flag == MISSING_FLAG:
-            print_verbose_message(f"Found recovered id {id} - {title}")
+            print_verbose_and_log(f"Found recovered id {id} - {title}")
             recovered.append((id, title))
             master[i] = ["", id, title]
 
-    print_verbose_message("No recovered ids found. ", condition=is_empty(recovered))
-    print_verbose_message(f"{len(recovered)} recovered id(s) found. ", condition=not is_empty(recovered))
+    print_verbose_and_log("No recovered ids found. ", condition=is_empty(recovered))
+    print_verbose_and_log(f"{len(recovered)} recovered id(s) found. ", condition=not is_empty(recovered))
 
     return recovered
 
@@ -414,12 +434,12 @@ def find_missing_items(master, new_items):
     missing = []
     for i, [flag, id, title] in enumerate(master):
         if id not in new_items and flag != MISSING_FLAG:
-            print_verbose_message(f"Found missing id at position {i}, {master[i]}")
+            print_verbose_and_log(f"Found missing id at position {i}, {master[i]}")
             master[i][0] = MISSING_FLAG
             missing.append((id, title))
 
-    print_verbose_message("No missing ids found. ", condition=is_empty(missing))
-    print_verbose_message(f"{len(missing)} missing id(s) found. ", condition=not is_empty(missing))
+    print_verbose_and_log("No missing ids found. ", condition=is_empty(missing))
+    print_verbose_and_log(f"{len(missing)} missing id(s) found. ", condition=not is_empty(missing))
 
     return missing
 
@@ -442,11 +462,11 @@ def find_renamed_items(master, new_items):
     renamed = []
     for [_, id, title] in master:
         if id in new_items and title != new_items[id]:
-            print_verbose_message(f"Found renamed item {id}, {title} > {new_items[id]}")
+            print_verbose_and_log(f"Found renamed item {id}, {title} > {new_items[id]}")
             renamed.append((id, title, new_items[id]))
 
-    print_verbose_message("No renamed items found. ", condition=is_empty(renamed))
-    print_verbose_message(f"{len(renamed)} renamed item(s) found.", condition=not is_empty(renamed))
+    print_verbose_and_log("No renamed items found. ", condition=is_empty(renamed))
+    print_verbose_and_log(f"{len(renamed)} renamed item(s) found.", condition=not is_empty(renamed))
 
     return renamed
 
@@ -528,5 +548,12 @@ def main():
 
         print()
 
+        log.info("Script exited successfully.")
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        log.error(e)
+        log.error("Script exited unexpectedly.")
+        raise e
