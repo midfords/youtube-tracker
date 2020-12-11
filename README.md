@@ -118,6 +118,6 @@ Now you can run the scripts with `run_youtube` and `print_youtube` commands.
 
 ### Screenshots
 
-![Alt](/images/screenshot-diff.png "Screenshot")
-![Alt](/images/screenshot-print.png "Screenshot")
+![Alt](/screenshots/screenshot-diff.png "Screenshot")
+![Alt](/screenshots/screenshot-print.png "Screenshot")
 
