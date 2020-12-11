@@ -4,11 +4,10 @@
 __pycache__/
 
 diff/
-keys/
 logs/
+auth/
 
-client_secret*
-credentials.storage
-
-config.ini
-config_test.ini
+config-spotify.ini
+config-spotify_test.ini
+config-youtube.ini
+config-youtube_test.ini

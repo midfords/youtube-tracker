@@ -2,31 +2,27 @@ import argparse
 import configparser
 import csv
 import datetime
-import httplib2
 import io
 import json
 import logging
 import os
 import progressbar
-import requests
+import spotipy
 import sys
 from colorama import Fore
 from colorama import Style
-from oauth2client.client import flow_from_clientsecrets
-from oauth2client.file import Storage
-from oauth2client.tools import argparser
-from oauth2client.tools import run_flow
+from spotipy.oauth2 import SpotifyOAuth
 
 # Setup paths
 
 src_dir = os.path.dirname(__file__)
 module_dir = os.path.join(src_dir, '..')
-config_path = os.path.join(module_dir, 'config/config-youtube.ini')
+config_path = os.path.join(module_dir, 'config/config-spotify.ini')
 
 # Setup logging
 
 timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H%M%S")
-log_name = f"application-youtube-{timestamp}.log"
+log_name = f"application-spotify-{timestamp}.log"
 log_path = os.path.join(module_dir, "logs")
 log_file = os.path.join(log_path, log_name)
 
@@ -39,162 +35,148 @@ log.setLevel(logging.INFO)
 
 # Setup CLI arguments and flags
 
-parser = argparse.ArgumentParser(description='Flags to change the running behavior of the youtube diff script.')
+parser = argparse.ArgumentParser(description='Flags to change the running behavior of the spotify diff script.')
 parser.add_argument('-r', '--reauth', action='store_true', help='force the script to reauthenticate.')
-parser.add_argument('-s', '--showall', action='store_true', help='include items that are known to be renamed.')
 parser.add_argument('-v', '--verbose', action='store_true', help='output all verbose messages.')
 parser.add_argument('-c', '--config', help='run script using specific config file.')
 args = parser.parse_args()
 
 REAUTH_FLAG = args.reauth
-SHOW_ALL_FLAG = args.showall
 VERBOSE_FLAG = args.verbose
 config_path = args.config if args.config is not None else config_path
 
 log.info(f"Running with config file located at {config_path}.")
 
+MAX_LIMIT = 50
 MISSING_FLAG = "!"
-PROGRESS_THRESHOLD = 100
+UNAVAILABLE_FLAG = "u"
+PROGRESS_THRESHOLD = 200
 
 # Setup config
 
 config = configparser.ConfigParser()
 config.read(config_path)
 
-log.info(f"Reading in config file.")
-
-api_key = config.get('keys', 'api')
-path = config.get('params', 'path')
-client_secret = config.get('params', 'secret_path')
 playlists = json.loads(config.get('params', 'playlists'))
+market = config.get('params', 'market')
+path = config.get('params', 'path')
+creds_path = config.get('params', 'secret_path')
+cache_path = config.get('params', 'cache_path')
+
+if not os.path.exists(path):
+    log.warning(f"Could not find path {path}, creating directories.")
+    os.makedirs(path)
 
 def auth():
-    scope = ["https://www.googleapis.com/auth/youtube.readonly"]
-    storage_path = os.path.join(module_dir, 'auth/credentials.storage')
+    with open(creds_path, 'r') as file:
+        creds = json.loads(file.read())
 
-    if not VERBOSE_FLAG:
+    if not VERBOSE_FLAG and not REAUTH_FLAG:
         sys.stdout = io.StringIO()
         sys.stderr = io.StringIO()
 
-    storage = Storage(storage_path)
-    credentials = storage.get()
+    if REAUTH_FLAG and os.path.exists(cache_path):
+        print_verbose_and_log(f"Forcing reauthentication by removing {cache_path}.")
+        os.remove(cache_path)
+
     print_verbose_and_log("Refreshing stored credentials.")
 
-    credentials_invalid = credentials is None or \
-            credentials.__dict__["token_expiry"] < datetime.datetime.now() or \
-            credentials.invalid
-
-    if not credentials_invalid:
-        credentials.refresh(httplib2.Http())
-
-    print_verbose_and_log("Could not find credentials from storage.", condition=credentials_invalid)
-    print_verbose_and_log("Forcing reauthentication.", condition=REAUTH_FLAG)
-
-    if credentials_invalid or REAUTH_FLAG:
-        print_verbose_and_log("Starting new oauth2 authentication flow.")
-        flow = flow_from_clientsecrets(client_secret, scope=scope)
-        flags = argparser.parse_args(args=[])
-        credentials = run_flow(flow, storage, flags=flags)
-
-    token = credentials.__dict__["access_token"]
-    print_verbose_and_log(f"Using access token '{token}'")
+    client = spotipy.Spotify(auth_manager=SpotifyOAuth(
+        scope=creds['scope'],
+        client_id=creds['client_id'],
+        client_secret=creds['client_secret'],
+        redirect_uri=creds['redirect_uri'],
+        cache_path=cache_path
+    ))
 
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
 
-    return token
+    return client
 
-def fetch_username(token):
-    url = "https://www.googleapis.com/youtube/v3/channels"
-    params = {
-        "key": api_key,
-        "mine": "true",
-        "part": "snippet",
-        "maxResults": "1"
-    }
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-    res = requests.get(url, params=params, headers=headers).json()
+def fetch_username(client):
+    return client.current_user()['display_name']
 
-    return res["items"][0]["snippet"]["title"]
+def fetch_playlist_name(client, id):
+    return client.playlist(playlist_id=id)['name']
 
-def fetch_playlist_name(playlist_id, token=None):
-    url = "https://www.googleapis.com/youtube/v3/playlists"
-    params = {
-        "key": api_key,
-        "id": playlist_id,
-        "part": "snippet",
-        "maxResults": "1"
-    }
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-    if token == None:
-        res = requests.get(url, params=params).json()
-    else:
-        res = requests.get(url, params=params, headers=headers).json()
+def fetch_playlist_page(client, id, offset=0):
+    resp = client.playlist_items(playlist_id=id, limit=100, offset=offset)
+    items = filter(lambda i: not i['track']['is_local'], resp['items'])
 
-    return res["items"][0]["snippet"]["title"]
+    items = { i['track']['id']: f"{i['track']['artists'][0]['name']} - {i['track']['name']}" for i in items }
+    count = resp['offset'] + len(resp['items'])
+    total = resp['total']
 
-def fetch_playlist_page(playlist_id, token=None, page_token=None):
-    url = "https://www.googleapis.com/youtube/v3/playlistItems"
-    params = {
-        "key": api_key,
-        "pageToken": page_token,
-        "playlistId": playlist_id,
-        "part": "snippet",
-        "maxResults": "50"
-    }
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-    if token == None:
-        res = requests.get(url, params=params).json()
-    else:
-        res = requests.get(url, params=params, headers=headers).json()
+    return (items, count, total)
 
-    items = { i["snippet"]["resourceId"]["videoId"]: i["snippet"]["title"] for i in res["items"] }
-    next_page = res["nextPageToken"] if "nextPageToken" in res else None
-    count = res["pageInfo"]["totalResults"]
+def fetch_playlist(client, id):
+    (fetched, count, total) = fetch_playlist_page(client, id)
 
-    return (items, next_page, count)
+    if total > PROGRESS_THRESHOLD:
+        progress = progressbar.ProgressBar(max_value=total)
 
-def fetch_playlist(playlist_id, token=None):
-    (fetched, next, count) = fetch_playlist_page(playlist_id, token)
+    while count < total:
+        if total > PROGRESS_THRESHOLD:
+            progress.update(count)
 
-    if count > PROGRESS_THRESHOLD:
-        progress = progressbar.ProgressBar(max_value=count)
-
-    while next != None:
-        if count > PROGRESS_THRESHOLD:
-            progress.update(len(fetched))
-
-        (items, next, count) = fetch_playlist_page(playlist_id, token, next)
+        (items, count, total) = fetch_playlist_page(client, id, count)
         fetched.update(items)
 
-    if count > PROGRESS_THRESHOLD:
+    if total > PROGRESS_THRESHOLD:
         progress.update(len(fetched))
         progress.finish()
 
-    print_verbose_and_log(f"Fetched {len(fetched)} item(s) from playlist {playlist_id}")
+    print_verbose_and_log(f"Fetched {len(fetched)} item(s) from playlist {id}")
+
+    return fetched
+
+def fetch_library_page(client, offset=0):
+    resp = client.current_user_saved_tracks(limit=MAX_LIMIT, offset=offset)
+    items = filter(lambda i: not i['track']['is_local'], resp['items'])
+
+    items = { i['track']['id']: f"{i['track']['artists'][0]['name']} - {i['track']['name']}" for i in resp['items'] }
+    count = resp['offset'] + len(resp['items'])
+    total = resp['total']
+
+    return (items, count, total)
+
+def fetch_library(client):
+    (fetched, count, total) = fetch_library_page(client)
+
+    if total > PROGRESS_THRESHOLD:
+        progress = progressbar.ProgressBar(max_value=total)
+
+    while count < total:
+        if total > PROGRESS_THRESHOLD:
+            progress.update(count)
+
+        (items, count, total) = fetch_library_page(client, count)
+        fetched.update(items)
+
+    if total > PROGRESS_THRESHOLD:
+        progress.update(len(fetched))
+        progress.finish()
+
+    print_verbose_and_log(f"Fetched {len(fetched)} item(s) from user's library")
 
     return fetched
 
 def print_head_signin(username):
     p0 = f"{Style.RESET_ALL}{Fore.RED}👤{Style.RESET_ALL}"
-    p1 = f"{Style.RESET_ALL}Signed in to {Fore.RED}YouTube{Style.RESET_ALL} as {Fore.MAGENTA}{username}{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}Signed in to {Fore.GREEN}Spotify{Style.RESET_ALL} as {Fore.MAGENTA}{username}{Style.RESET_ALL}"
     print(p0, p1)
 
 def print_head_fetching(id, title):
-    p0 = f"{Style.RESET_ALL}{Fore.RED}▶{Style.RESET_ALL}"
-    p1 = "{:60}".format(f"{Style.RESET_ALL}Fetching {Fore.RED}{title}{Style.RESET_ALL} playlist from {Fore.RED}YouTube{Style.RESET_ALL}...")
+    out = title if len(title) < 60 else title[0:59] + "…"
+    p0 = f"{Style.RESET_ALL}{Fore.GREEN}▶{Style.RESET_ALL}"
+    p1 = "{:60}".format(f"{Style.RESET_ALL}Fetching {Fore.GREEN}{out}{Style.RESET_ALL} playlist from {Fore.GREEN}Spotify{Style.RESET_ALL}...")
     p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
     print(p0, p1, p2)
 
 def print_err_plnotfound(id):
-    p0 = f"{Style.RESET_ALL}{Fore.RED}▶{Style.RESET_ALL}"
-    p1 = "{:60}".format(f"{Style.RESET_ALL}Could not access {Fore.RED}Unknown{Style.RESET_ALL} playlist.")
+    p0 = f"{Style.RESET_ALL}{Fore.GREEN}▶{Style.RESET_ALL}"
+    p1 = "{:60}".format(f"{Style.RESET_ALL}Could not access {Fore.GREEN}Unknown{Style.RESET_ALL} playlist.")
     p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
     print(p0, p1, p2)
 
@@ -210,6 +192,12 @@ def print_info_recovered(id, title):
     p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
     print("  ", p0, p1, p2)
 
+def print_info_available(id, title):
+    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.GREEN}✓{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}{Fore.GREEN}{title}{Style.RESET_ALL} is now playable in your region"
+    p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
+    print("  ", p0, p1, p2)
+
 def print_info_rename(id, old, new):
     p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.BLUE}i{Style.RESET_ALL}"
     p1 = f"{Style.RESET_ALL}Song was renamed from {Fore.BLUE}{old}{Style.RESET_ALL} to {Fore.BLUE}{new}{Style.RESET_ALL}"
@@ -219,6 +207,12 @@ def print_info_rename(id, old, new):
 def print_info_missing(id, title):
     p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.RED}×{Style.RESET_ALL}"
     p1 = f"{Style.RESET_ALL}{Fore.RED}{title}{Style.RESET_ALL} is missing from the playlist{Style.RESET_ALL}"
+    p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
+    print("  ", p0, p1, p2)
+
+def print_info_unavailable(id, title):
+    p0 = f"{Style.RESET_ALL}{Style.BRIGHT}{Fore.RED} ⃠{Style.RESET_ALL}"
+    p1 = f"{Style.RESET_ALL}{Fore.RED}{title}{Style.RESET_ALL} is now unplayable in your region{Style.RESET_ALL}"
     p2 = f"{Style.RESET_ALL}{Style.DIM}[{id}]{Style.RESET_ALL}"
     print("  ", p0, p1, p2)
 
@@ -256,52 +250,6 @@ def print_verbose_and_log(msg, condition=True, error=None):
 
 def is_empty(list):
     return len(list) == 0
-
-def read_cache_file(playlist_id):
-    """Reads in a file of song ids that are known to be renamed.
-
-    If there is no file, or the file is empty, the function
-    will return an empty set.
-
-    Returns
-    -------
-    map
-        a map of all the known song ids formatted as { id : title }
-    """
-    sname = f".{playlist_id}.cache"
-    spath = os.path.join(path, sname)
-
-    if not os.path.exists(spath):
-        print_verbose_and_log(f"Could not find {sname} file.'")
-        return {}
-
-    with open(spath, 'r') as file:
-        reader = csv.reader(file)
-        ids = {line[0]: line[1] for line in reader}
-
-    print_verbose_and_log(f"Read {len(ids)} row(s) from '{sname}'")
-
-    return ids
-
-def write_cache_file(cache, playlist_id):
-    """Writes in a file of song ids that are known to be renamed.
-
-    If there is no file, a file '.{playlist}.cache' will be created in the project
-    root directory.
-
-    Parameters
-    -------
-    map
-        a map of all the known song ids formatted as { id : title }
-    """
-    spath = os.path.join(path, f".{playlist_id}.cache")
-    rows = [[id, title] for id, title in cache.items()]
-
-    print_verbose_and_log(f"Writing {len(cache)} row(s) to '.{playlist_id}.cache'")
-    with open(spath, 'w+') as file:
-        writer = csv.writer(file)
-        for item in rows:
-            writer.writerow(item)
 
 def read_playlist_file(playlist_id):
     """Reads in a csv file of playlist information.
@@ -358,7 +306,7 @@ def write_playlist_file(rows, playlist_id, name):
         The playlist id, used to find the csv file on disk.
     """
     fpath = os.path.join(path, f"{playlist_id}.ipl")
-    header = ["#IPL", "1.1", "YOUTUBE", len(rows), playlist_id, name]
+    header = ["#IPL", "1.1", "SPOTIFY", len(rows), playlist_id, name]
 
     print_verbose_and_log(f"Writing {len(rows)} row(s) to '{playlist_id}.ipl'")
     with open(fpath, 'w+') as file:
@@ -454,42 +402,64 @@ def find_missing_items(master, new_items):
 
     return missing
 
-def find_renamed_items(master, new_items):
-    """Compares the items from the new_items list and master list,
-    and finds all the renamed items.
-
-    Parameters
-    ----------
-    master : list
-        list of all items, formatted as [flag, video_id, title]
-    new_items : dict
-        list of new items, formatted as { video_id : title }
-
-    Returns
-    -------
-    list
-        a list of all the renamed songs, formatted as (video_id, old_title, new_title)
-    """
-    renamed = []
-    for [_, id, title] in master:
-        if id in new_items and title != new_items[id]:
-            print_verbose_and_log(f"Found renamed item {id}, {title} > {new_items[id]}")
-            renamed.append((id, title, new_items[id]))
-
-    print_verbose_and_log("No renamed items found. ", condition=is_empty(renamed))
-    print_verbose_and_log(f"{len(renamed)} renamed item(s) found.", condition=not is_empty(renamed))
-
-    return renamed
-
 def main():
-    token = auth()
-    user = fetch_username(token)
+    client = auth()
+    user = fetch_username(client)
     print_head_signin(user)
     print()
 
+    # Check for user library
+
+    playlist = 'spotify_library'
+    name = 'Library'
+
+    print_head_fetching(playlist, name)
+
+    master = read_playlist_file(playlist)
+    new = fetch_library(client)
+
+    fname = f"{playlist}.ipl"
+    fpath = os.path.join(path, fname)
+    if not os.path.exists(fpath):
+        print_warn_filenotfound(fname)
+
+    added = find_added_items(master, new)
+    recovered = find_recovered_items(master, new)
+    missing = find_missing_items(master, new)
+
+
+    for item in added:
+        id = item[0]
+        title = item[1]
+        print_info_added(id, title)
+
+    for item in recovered:
+        id = item[0]
+        title = item[1]
+        print_info_recovered(id, title)
+
+    for item in missing:
+        id = item[0]
+        title = item[1]
+        print_info_missing(id, title)
+
+
+    if not is_empty(added) or not is_empty(missing) or not is_empty(recovered):
+        if not os.path.exists(fpath):
+            print_warn_createfile(fname)
+        print_warn_writingfile(fname)
+        write_playlist_file(master, playlist, name)
+
+    else:
+        print_info_nochanges()
+
+    print()
+
+    # Check for all other playlists
+
     for playlist in playlists:
         try:
-            name = fetch_playlist_name(playlist, token)
+            name = fetch_playlist_name(client, playlist)
             print_head_fetching(playlist, name)
         except Exception as err:
             print_verbose_and_log(f"Playlist {playlist} not found.", error=err)
@@ -497,8 +467,7 @@ def main():
             continue
 
         master = read_playlist_file(playlist)
-        cache = read_cache_file(playlist)
-        new = fetch_playlist(playlist, token)
+        new = fetch_playlist(client, playlist)
 
         fname = f"{playlist}.ipl"
         fpath = os.path.join(path, fname)
@@ -508,7 +477,7 @@ def main():
         added = find_added_items(master, new)
         recovered = find_recovered_items(master, new)
         missing = find_missing_items(master, new)
-        renamed = find_renamed_items(master, new)
+
 
         for item in added:
             id = item[0]
@@ -525,29 +494,6 @@ def main():
             title = item[1]
             print_info_missing(id, title)
 
-        for item in renamed:
-            id = item[0]
-            old_title = item[1]
-            new_title = item[2]
-            if id not in cache or cache[id] != new_title or SHOW_ALL_FLAG:
-                print_info_rename(id, old_title, new_title)
-
-        cache_flag = False
-        for item in renamed:
-            id = item[0]
-            new_title = item[2]
-            cache_flag = cache_flag \
-                or id not in cache \
-                or cache[id] != new_title
-            cache[id] = new_title
-
-        sname = f".{playlist}.cache"
-        spath = os.path.join(path, sname)
-        if cache_flag:
-            if not os.path.exists(spath):
-                print_warn_filenotfound(sname)
-            print_warn_writingfile(sname)
-            write_cache_file(cache, playlist)
 
         if not is_empty(added) or not is_empty(missing) or not is_empty(recovered):
             if not os.path.exists(fpath):
@@ -555,7 +501,7 @@ def main():
             print_warn_writingfile(fname)
             write_playlist_file(master, playlist, name)
 
-        elif is_empty(renamed) or not cache_flag:
+        else:
             print_info_nochanges()
 
         print()
@@ -568,3 +514,27 @@ if __name__ == "__main__":
     except Exception as err:
         print_verbose_and_log("Script exited unexpectedly.", error=err)
         raise err
+
+
+
+
+# Todo: available, unavailable, check linked songs add ipl unavailable state, possible bug with song ids - check 4D98wFVp9mJKizx5lhaHzb  Vampire Weekend - Ottoman
+
+# def id_linked_playable(id):
+#     print(id)
+#     resp = sp.tracks(tracks=[id], market=market)
+
+#     playable = resp['tracks'][0]['is_playable']
+#     print(f"Linked to: {resp['tracks'][0]['id']}")
+
+#     print(f"Playable: {playable}")
+#     return playable
+
+# results = sp.current_user_saved_tracks(limit=50)
+
+# for item in results['items']:
+#     id = item['track']['id']
+#     playable = market in item['track']['available_markets'] or id_linked_playable(id)
+#     if not playable:
+#         print(f"Found missing! {item['track']['artists'][0]['name']} - {item['track']['name']} [{item['track']['id']}]")
+
